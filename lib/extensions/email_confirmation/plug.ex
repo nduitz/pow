@@ -89,15 +89,4 @@ defmodule PowEmailConfirmation.Plug do
 
     Keyword.equal?(clauses1, clauses2)
   end
-
-  # TODO: Remove by 1.1.0
-  @doc false
-  @deprecated "Use `confirm_email_by_token/2`"
-  def confirm_email(conn, token) do
-    config = Plug.fetch_config(conn)
-
-    token
-    |> Context.get_by_confirmation_token(config)
-    |> maybe_confirm_email(conn, config)
-  end
 end
