@@ -14,6 +14,9 @@ defmodule Pow.Plug.Session do
   assigned private `:pow_session_metadata` key in the conn. The value has to be
   a keyword list.
 
+  Telemetry events are dispatched for the lifecycle of the sessions. See
+  `Pow.telemetry_event/5` for more.
+
   ## Example
 
       plug Plug.Session,
@@ -170,6 +173,7 @@ defmodule Pow.Plug.Session do
       |> delete(config)
       |> Conn.put_private(:pow_session_metadata, metadata)
       |> client_store_put(key, config)
+      |> log_create(key, {user, metadata}, config)
 
     {conn, user}
   end
@@ -181,6 +185,12 @@ defmodule Pow.Plug.Session do
       |> Keyword.put(:inserted_at, timestamp())
 
     {user, metadata}
+    end
+
+  defp log_create(conn, key, value, config) do
+    Pow.telemetry_event(config, __MODULE__, :create, %{}, %{conn: conn, value: value, key: key})
+
+    conn
   end
 
   @doc """
@@ -204,8 +214,16 @@ defmodule Pow.Plug.Session do
 
         store.delete(store_config, key)
 
-        client_store_delete(conn, config)
+        conn
+        |> client_store_delete(config)
+        |> log_delete(key, config)
     end
+  end
+
+  defp log_delete(conn, key, config) do
+    Pow.telemetry_event(config, __MODULE__, :delete, %{}, %{conn: conn, key: key})
+
+    conn
   end
 
   # TODO: Remove by 1.1.0

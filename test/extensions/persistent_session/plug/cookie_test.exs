@@ -2,7 +2,7 @@ defmodule PowPersistentSession.Plug.CookieTest do
   use ExUnit.Case
   doctest PowPersistentSession.Plug.Cookie
 
-  alias Plug.Conn
+  alias Plug.{Conn, Test}
   alias Pow.{Plug, Plug.Session}
   alias Pow.Test.ConnHelpers
   alias PowPersistentSession.{Plug.Cookie, Store.PersistentSessionCache}
@@ -290,5 +290,34 @@ defmodule PowPersistentSession.Plug.CookieTest do
     refute Plug.current_user(conn)
     assert conn.resp_cookies[@cookie_key] == %{max_age: 0, universal_time: {{1970, 1, 1}, {0, 0, 0}}, path: "/path", domain: "domain.com", extra: "SameSite=Lax", http_only: false, secure: true}
     assert PersistentSessionCache.get([backend: ets], id) == :not_found
+  end
+
+  describe "with telemetry logging" do
+    setup do
+      pid    = self()
+      events = [
+        [:pow, Cookie, :create],
+        [:pow, Cookie, :delete]
+      ]
+
+      :telemetry.attach_many("event-handler-#{inspect pid}", events, fn event, measurements, metadata, send_to: pid ->
+        send(pid, {:event, event, measurements, metadata})
+      end, send_to: pid)
+    end
+
+    test "create and delete", %{conn: new_conn, config: config} do
+      conn = Cookie.create(new_conn, %User{id: 1}, config)
+
+      assert_receive {:event, [:pow, Cookie, :create], _measurements, %{conn: _conn, key: key, value: value}}
+      assert key
+      assert {[id: 1], _metadata} = value
+
+      new_conn
+      |> Test.recycle_cookies(conn)
+      |> Cookie.delete(config)
+
+      assert_receive {:event, [:pow, Cookie, :delete], _measurements, %{conn: _conn, key: key}}
+      assert key
+    end
   end
 end

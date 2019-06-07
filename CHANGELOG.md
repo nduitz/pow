@@ -23,6 +23,11 @@
 * [`PowPersistentSession.Plug.Cookie`] Removed renewal of cookie as the token will always expire
 * [`PowPersistentSession.Plug.Cookie`] No longer expires invalid cookies
 * [`Pow.Operations`] Added `Pow.Operations.fetch_primary_key_values/2`
+* [`Pow.Plug.Session] `:telemetry` events are now dispatched for the following events:
+  * When session is created or renewed in `Pow.Plug.Session.create/3`
+  * When session is deleted in `Pow.Plug.Session.delete/2`
+* [`Pow.Store.Backend.EtsCache`] `:telemetry` events are now dispatched when key value store is deleted, created or invalidated
+* [`Pow.Store.Backend.MnesiaCache`] `:telemetry` events are now dispatched when key value store is deleted, created or invalidated i
 
 ### Removed
 

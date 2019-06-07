@@ -300,6 +300,37 @@ defmodule Pow.Plug.SessionTest do
     assert is_nil(Plug.current_user(conn))
   end
 
+  describe "with telemetry logging" do
+    setup do
+      pid    = self()
+      events = [
+        [:pow, Session, :create],
+        [:pow, Session, :delete]
+      ]
+
+      :telemetry.attach_many("event-handler-#{inspect pid}", events, fn event, measurements, metadata, send_to: pid ->
+        send(pid, {:event, event, measurements, metadata})
+      end, send_to: pid)
+    end
+
+    test "create and delete", %{conn: conn} do
+      opts = Session.init(@default_opts)
+      conn =
+        conn
+        |> Session.call(opts)
+        |> Session.do_create(@user, opts)
+
+      assert_receive {:event, [:pow, Session, :create], _measurements, %{conn: _conn, key: key, value: value}}
+      assert key
+      assert {_user, _metadata} = value
+
+      Session.do_delete(conn, opts)
+
+      assert_receive {:event, [:pow, Session, :delete], _measurements, %{conn: _conn, key: key}}
+      assert key
+    end
+  end
+
   describe "with EtsCache backend" do
     setup do
       start_supervised!({EtsCache, []})

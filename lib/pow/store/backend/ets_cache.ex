@@ -62,6 +62,8 @@ defmodule Pow.Store.Backend.EtsCache do
       |> table_insert(config)
       |> Enum.reduce(invalidators, &append_invalidator(elem(&1, 0), &2, config))
 
+    Pow.telemetry_event(config, __MODULE__, :cache, %{}, %{records: record_or_records})
+
     {:noreply, %{state | invalidators: invalidators}}
   end
 
@@ -71,6 +73,8 @@ defmodule Pow.Store.Backend.EtsCache do
       key
       |> table_delete(config)
       |> clear_invalidator(invalidators)
+
+    Pow.telemetry_event(config, __MODULE__, :delete, %{}, %{key: key})
 
     {:noreply, %{state | invalidators: invalidators}}
   end
@@ -82,6 +86,8 @@ defmodule Pow.Store.Backend.EtsCache do
       key
       |> table_delete(config)
       |> clear_invalidator(invalidators)
+
+    Pow.telemetry_event(config, __MODULE__, :invalidate, %{}, %{key: key})
 
     {:noreply, %{state | invalidators: invalidators}}
   end

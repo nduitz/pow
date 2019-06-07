@@ -9,6 +9,17 @@ defmodule Pow.Store.Backend.EtsCacheTest do
   setup do
     start_supervised!({EtsCache, []})
 
+    pid    = self()
+    events = [
+      [:pow, EtsCache, :cache],
+      [:pow, EtsCache, :delete],
+      [:pow, EtsCache, :invalidate]
+    ]
+
+    :telemetry.attach_many("event-handler-#{inspect pid}", events, fn event, measurements, metadata, send_to: pid ->
+      send(pid, {:event, event, measurements, metadata})
+    end, send_to: pid)
+
     :ok
   end
 
@@ -16,11 +27,11 @@ defmodule Pow.Store.Backend.EtsCacheTest do
     assert EtsCache.get(@default_config, "key") == :not_found
 
     EtsCache.put(@default_config, {"key", "value"})
-    :timer.sleep(100)
+    assert_receive {:event, [:pow, EtsCache, :cache], _measurements, %{records: {"key", "value"}}}
     assert EtsCache.get(@default_config, "key") == "value"
 
     EtsCache.delete(@default_config, "key")
-    :timer.sleep(100)
+    assert_receive {:event, [:pow, EtsCache, :delete], _measurements, %{key: "key"}}
     assert EtsCache.get(@default_config, "key") == :not_found
   end
 
@@ -61,7 +72,7 @@ defmodule Pow.Store.Backend.EtsCacheTest do
     assert EtsCache.get(config, "key") == "value"
     assert EtsCache.get(config, "key1") == "1"
     assert EtsCache.get(config, "key2") == "2"
-    :timer.sleep(100)
+    assert_receive {:event, [:pow, EtsCache, :invalidate], _measurements, %{key: "key"}}
     assert EtsCache.get(config, "key") == :not_found
     assert EtsCache.get(config, "key1") == :not_found
     assert EtsCache.get(config, "key2") == :not_found
