@@ -7,8 +7,8 @@ defmodule PowPersistentSession.Plug.Cookie do
 
   If an assigned private `:pow_session_metadata` key exists in the conn with a
   keyword list containing a `:fingerprint` key, that fingerprint value will be
-  set along with the user clause as the persistent session value as
-  `{[id: user_id], session_metadata: [fingerprint: fingerprint]}`.
+  set along with the user as the persistent session value as
+  `{user, session_metadata: [fingerprint: fingerprint]}`.
 
   ## Example
 
@@ -82,7 +82,7 @@ defmodule PowPersistentSession.Plug.Cookie do
   keyword list containing a `:fingerprint` value, then that value will be set
   in a `:session_metadata` keyword list in the persistent session metadata. The
   value will look like:
-  `{[id: user_id], session_metadata: [fingerprint: fingerprint]}`
+  `{user, session_metadata: [fingerprint: fingerprint]}`
 
   The unique token will be prepended by the `:otp_app` configuration value, if
   present.
@@ -92,7 +92,7 @@ defmodule PowPersistentSession.Plug.Cookie do
     {store, store_config} = store(config)
     cookie_key            = cookie_key(config)
     key                   = cookie_id(config)
-    value                 = persistent_session_value(conn, user, config)
+    value                 = persistent_session_value(conn, user)
     opts                  = cookie_opts(config)
 
     store.put(store_config, key, value)
@@ -102,21 +102,13 @@ defmodule PowPersistentSession.Plug.Cookie do
     |> Conn.put_resp_cookie(cookie_key, key, opts)
   end
 
-  defp persistent_session_value(conn, user, config) do
-    clauses  = user_to_get_by_clauses!(user, config)
+  defp persistent_session_value(conn, user) do
     metadata =
       conn.private
       |> Map.get(:pow_persistent_session_metadata, [])
       |> maybe_put_fingerprint_in_session_metadata(conn)
 
-    {clauses, metadata}
-  end
-
-  defp user_to_get_by_clauses!(user, config) do
-    case Operations.fetch_primary_key_values(user, config) do
-      {:ok, clauses}  -> clauses
-      {:error, error} -> raise error
-    end
+    {user, metadata}
   end
 
   defp maybe_put_fingerprint_in_session_metadata(metadata, conn) do
@@ -204,29 +196,20 @@ defmodule PowPersistentSession.Plug.Cookie do
 
   defp do_authenticate(conn, key_id, config) do
     {store, store_config} = store(config)
-    res                   = store.get(store_config, key_id)
     plug                  = Plug.get_plug(config)
 
-    case res do
+    user =
+      store_config
+      |> store.get(key_id)
+      |> reload_user(config)
+
+    expire_token_in_store(key_id, config)
+
+    case user do
       :not_found ->
         conn
 
-      res ->
-        expire_token_in_store(key_id, config)
-
-        fetch_and_auth_user(conn, res, plug, config)
-    end
-  end
-
-  defp fetch_and_auth_user(conn, {clauses, metadata}, plug, config) do
-    clauses
-    |> filter_invalid!()
-    |> Operations.get_by(config)
-    |> case do
-      nil ->
-        conn
-
-      user ->
+      {user, metadata} ->
         conn
         |> update_persistent_session_metadata(metadata)
         |> update_session_metadata(metadata)
@@ -234,12 +217,30 @@ defmodule PowPersistentSession.Plug.Cookie do
         |> plug.do_create(user, config)
     end
   end
-  # TODO: Remove by 1.1.0
-  defp fetch_and_auth_user(conn, user_id, plug, config),
-    do: fetch_and_auth_user(conn, {user_id, []}, plug, config)
 
-  defp filter_invalid!([id: _value] = clauses), do: clauses
-  defp filter_invalid!(clauses), do: raise "Invalid get_by clauses stored: #{inspect clauses}"
+  defp reload_user(:not_found, _config), do: :not_found
+  # TODO: Remove by 1.1.0
+  defp reload_user({clauses, metadata}, config) when is_list(clauses) do
+    case Operations.get_by(clauses, config) do
+      nil  -> :not_found
+      user -> {user, metadata}
+    end
+  end
+  defp reload_user({user, metadata}, config) do
+    user
+    |> load_from_user(config)
+    |> case do
+      nil  -> :not_found
+      user -> {user, metadata}
+    end
+  end
+
+  defp load_from_user(user, config) do
+    case Operations.fetch_primary_key_values(user, config) do
+      {:error, _any} -> nil
+      {:ok, clauses} -> Operations.get_by(clauses, config)
+    end
+  end
 
   defp update_persistent_session_metadata(conn, metadata) do
     case Keyword.get(metadata, :session_metadata) do

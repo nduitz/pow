@@ -98,7 +98,7 @@ defmodule MyAppWeb.APIAuthPlug do
       |> Conn.put_private(:api_renew_token, renew_token)
 
     CredentialsCache.put(store_config, token, {user, []})
-    PersistentSessionCache.put(store_config, renew_token, {[id: user.id], []})
+    PersistentSessionCache.put(store_config, renew_token, {user, []})
 
     {conn, user}
   end

@@ -2,6 +2,7 @@ defmodule PowPersistentSession.Phoenix.ControllerCallbacksTest do
   use PowPersistentSession.TestWeb.Phoenix.ConnCase
 
   alias PowPersistentSession.Store.PersistentSessionCache
+  alias PowPersistentSession.Test.Users.User
 
   @valid_params %{"email" => "test@example.com", "password" => "secret1234"}
   @max_age Integer.floor_div(:timer.hours(30) * 24, 1000)
@@ -13,7 +14,7 @@ defmodule PowPersistentSession.Phoenix.ControllerCallbacksTest do
       assert session_fingerprint = conn.private[:pow_session_metadata][:fingerprint]
 
       assert %{max_age: @max_age, path: "/", value: id} = conn.resp_cookies[@cookie_key]
-      assert PersistentSessionCache.get([backend: ets], id) == {[id: 1], session_metadata: [fingerprint: session_fingerprint]}
+      assert {%User{id: 1}, session_metadata: [fingerprint: ^session_fingerprint]} = PersistentSessionCache.get([backend: ets], id)
     end
 
     test "with persistent_session param set to false", %{conn: conn} do
