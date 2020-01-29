@@ -305,7 +305,8 @@ defmodule Pow.Plug.SessionTest do
       pid    = self()
       events = [
         [:pow, Session, :create],
-        [:pow, Session, :delete]
+        [:pow, Session, :delete],
+        [:pow, Session, :stale_session]
       ]
 
       :telemetry.attach_many("event-handler-#{inspect pid}", events, fn event, measurements, metadata, send_to: pid ->
@@ -328,6 +329,23 @@ defmodule Pow.Plug.SessionTest do
 
       assert_receive {:event, [:pow, Session, :delete], _measurements, %{conn: _conn, key: key}}
       assert key
+    end
+
+    test "stale session", %{conn: conn} do
+      ttl       = 100
+      config    = Keyword.put(@default_opts, :session_ttl_renewal, ttl)
+      timestamp = :os.system_time(:millisecond) - ttl - 1
+
+      CredentialsCache.put(@store_config, "token", {@user, inserted_at: timestamp, fingerprint: "fingerprint"})
+
+      conn
+      |> Conn.fetch_session()
+      |> Conn.put_session(config[:session_key], "token")
+      |> Session.call(Session.init(config))
+
+      assert_receive {:event, [:pow, Session, :stale_session], _measurements, %{conn: _conn, key: key, value: value}}
+      assert key
+      assert {_user, _metadata} = value
     end
   end
 

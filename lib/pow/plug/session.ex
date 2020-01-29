@@ -231,19 +231,24 @@ defmodule Pow.Plug.Session do
   defp convert_old_session_value(any), do: any
 
   defp handle_fetched_session_value({_key, :not_found}, conn, _config), do: {conn, nil}
-  defp handle_fetched_session_value({_key, {user, metadata}}, conn, config) when is_list(metadata) do
+  defp handle_fetched_session_value({key, {user, metadata}}, conn, config) when is_list(metadata) do
     conn
     |> Conn.put_private(:pow_session_metadata, metadata)
-    |> renew_stale_session(user, metadata, config)
+    |> renew_stale_session(key, user, metadata, config)
   end
 
-  defp renew_stale_session(conn, user, metadata, config) do
+  defp renew_stale_session(conn, key, user, metadata, config) do
     metadata
     |> Keyword.get(:inserted_at)
     |> session_stale?(config)
     |> case do
-      true  -> create(conn, user, config)
-      false -> {conn, user}
+      true ->
+        conn
+        |> log_stale(key, {user, metadata}, config)
+        |> create(user, config)
+
+      false ->
+        {conn, user}
     end
   end
 
@@ -254,6 +259,12 @@ defmodule Pow.Plug.Session do
   defp session_stale?(_inserted_at, _config, nil), do: false
   defp session_stale?(inserted_at, _config, ttl) do
     inserted_at + ttl < timestamp()
+  end
+
+  defp log_stale(conn, key, value, config) do
+    Pow.telemetry_event(config, __MODULE__, :stale_session, %{}, %{conn: conn, value: value, key: key})
+
+    conn
   end
 
   defp session_id(config) do
